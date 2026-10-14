@@ -8,13 +8,13 @@ const data = JSON.parse(await readFile(new URL('../examples/random-forest.json',
 
 test('all formats preserve source, uncertainty and every point', () => {
   const files = buildArtifacts(data);
-  assert.equal(Object.keys(files).length, 5);
+  assert.equal(Object.keys(files).length, 9);
   for (const file of ['index.html', 'video.html', 'explanation.md']) {
     for (const point of data.points) assert.ok(files[file].includes(point.detail));
     assert.ok(files[file].includes(data.unknowns[0]));
     assert.ok(files[file].includes(data.sources[0].reference));
   }
-  assert.deepEqual(JSON.parse(files['explanation.json']), validateExplanation(data));
+  assert.deepEqual(JSON.parse(files['knowledge.json']), validateExplanation(data));
 });
 test('HTML/SVG cannot execute model-authored markup, script delimiters or unsafe links', () => {
   const attack = '</script><img src=x onerror=alert(1)>';

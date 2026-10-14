@@ -2,6 +2,9 @@ node_modules/
 .reference/
 .artifacts/
 test-output/
+.video-tools/
+__pycache__/
+*.pyc
 coverage/
 *.tgz
 .env

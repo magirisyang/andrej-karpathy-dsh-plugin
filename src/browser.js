@@ -1,5 +1,5 @@
 /** Runs in generated pages. Content is inserted via textContent, never evaluated. */
-export function pageRuntime() {
+export function pageRuntime(spatialModel, spatialSvg) {
   const data = JSON.parse(document.getElementById('explanation-data').textContent);
   const status = document.getElementById('status');
   document.getElementById('search')?.addEventListener('input', event => {
@@ -15,11 +15,31 @@ export function pageRuntime() {
     document.querySelectorAll('details').forEach(item => { item.open = button.dataset.expand === 'true'; });
   }));
   document.getElementById('print')?.addEventListener('click', () => window.print());
+  const simulationRoot = document.getElementById('spatial-plot');
+  if (simulationRoot && data.simulation) {
+    const grid = document.getElementById('grid-size'), fold = document.getElementById('holdout-fold');
+    const metrics = document.getElementById('spatial-metrics'), gridLabel = document.getElementById('grid-value');
+    const recalculate = () => {
+      const result = spatialModel({ ...data.simulation, gridSize: Number(grid.value), holdoutFold: Number(fold.value) });
+      // Trusted fixed renderer; no model-authored HTML is evaluated.
+      simulationRoot.innerHTML = spatialSvg(result);
+      gridLabel.textContent = grid.value;
+      metrics.textContent = result.accuracy === null ? '此划分没有足够的训练或验证样本，不能计算准确率。' :
+        `训练 ${result.train.length} · 验证 ${result.validation.length} · 模拟最近邻准确率 ${(result.accuracy * 100).toFixed(1)}% · 验证点到最近训练点的平均距离 ${result.meanNearestDistance.toFixed(2)}`;
+    };
+    grid.addEventListener('input', recalculate); fold.addEventListener('change', recalculate); recalculate();
+  }
   const canvas = document.getElementById('film');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   // Paginate long text so the exported video retains every character.
-  const scenes = [{ title: data.title, detail: data.summary }, ...data.points].flatMap(scene => {
+  const extra = [
+    ...data.facts.map(f => ({ title: { source_stated: '资料所述', inference: '推断', assumption: '假设', unverified: '未核验' }[f.status], detail: f.statement })),
+    ...(data.scope ? [{ title: '适用范围', detail: data.scope }] : []),
+    ...data.unknowns.map(detail => ({ title: '待确认', detail })),
+    ...data.sources.map(source => ({ title: '来源：' + source.label, detail: source.reference })),
+  ];
+  const scenes = [{ title: data.title, detail: data.summary }, ...data.points, ...extra].flatMap(scene => {
     const chars = [...scene.detail], pages = [];
     for (let i = 0; i < chars.length; i += 180) pages.push(chars.slice(i, i + 180).join(''));
     return pages.map((detail, i) => ({ title: scene.title + (pages.length > 1 ? ` (${i + 1}/${pages.length})` : ''), detail }));
