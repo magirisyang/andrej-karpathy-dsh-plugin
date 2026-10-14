@@ -1,0 +1,5 @@
+- id: karpathy-explain
+  name: andrej-karpathy-dsh-plugin
+  config:
+    defaultMode: all
+    outputDirectory: explanations
