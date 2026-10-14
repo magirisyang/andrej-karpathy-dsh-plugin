@@ -1,6 +1,6 @@
 {
   "name": "andrej-karpathy-dsh-plugin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "DeepSeek Harness plugin for clear Chinese explanations, diagrams, interactive pages and explainer timelines.",
   "type": "module",
@@ -23,7 +23,7 @@
     "@deepseek-ai/dsh-fs-local": "0.2.0-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2"
   },
-  "dsh": { "bundle": "./cordis.patch.yml" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
   "repository": { "type": "git", "url": "https://github.com/magirisyang/andrej-karpathy-dsh-plugin.git" },
   "keywords": ["dsh-plugin", "deepseek-harness", "explanation", "visualization"],
   "license": "MIT"

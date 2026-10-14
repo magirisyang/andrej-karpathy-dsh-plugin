@@ -1,24 +1,42 @@
 # Andrej Karpathy DSH 插件
 
-**0.2.0 开发预览 · DeepSeek Harness 0.2.0-rc.2**。按任务选择简明中文、SVG、可计算的 HTML 或明确请求的视频，各格式共享一份事实说明。这是独立的 DSH 原生实现，不是官方插件；不要求安装 OpenDesign，不修改宿主源码。
+**0.2.1 开发预览 · DeepSeek Harness 0.2.0-rc.2**。按任务选择简明中文、SVG、可计算的 HTML 或明确请求的视频，各格式共享一份事实说明。这是独立的 DSH 原生实现，不是官方插件；不要求安装 OpenDesign，不修改宿主源码。
 
 ## 安装
 
-在 DSH 插件页面输入本地目录，或使用桌面版附带 CLI：
+### DSH 插件页面（推荐）
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "D:\插件开发\Andrej-Karpathy插件"
+打开 DSH 的 **插件** 页面，选择安装插件，在来源输入框粘贴：
+
+```text
+github:magirisyang/andrej-karpathy-dsh-plugin
 ```
 
-已配置 PATH 时用 `dsh plugin --profile desktop add <目录>`；Web 用户换为 `--profile web`。安装后确认插件启用；工具列表未刷新时使用新会话或重启 DSH。需要 `tools`、`systemPrompt`、`fs`；受限文件服务还需 `sandboxPolicy`。支持范围固定为 0.2.0-rc.2。
+点击安装，完成后确认 `andrej-karpathy-dsh-plugin` 已启用；工具列表未刷新时新建会话或重启 DSH。安装会自动注册插件，无需下载源码、编译或手写配置。
 
-GitHub 上传完成后，授权过的本机 Git 可安装私有仓库：
+本仓库为 **Private**，安装电脑上的 Git 需要已授权 `magirisyang` 或具有仓库读取权限的账号。网页已登录不一定代表本机 Git 已授权。本机尚未授权时，可先执行 `git credential-manager github login --username magirisyang --browser` 并完成浏览器授权。不要把密码或令牌粘贴进插件来源框。
+
+### 命令行安装
+
+桌面版：
 
 ```powershell
 dsh plugin --profile desktop add github:magirisyang/andrej-karpathy-dsh-plugin
 ```
 
-远端未实际创建/上传前，该地址不可用。
+若桌面版附带 CLI 尚未加入 PATH：
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:magirisyang/andrej-karpathy-dsh-plugin
+```
+
+Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在来源末尾加 `#v0.2.1`。更新后重启 DSH，以加载新的代码。
+
+### 本地开发安装
+
+仅开发时使用本地 checkout：`dsh plugin --profile desktop add "D:\插件开发\Andrej-Karpathy插件"`。插件需要宿主的 `tools`、`systemPrompt`、`fs`；受限文件服务还需 `sandboxPolicy`。当前支持 DeepSeek Harness **0.2.0-rc.2**。
+
+组合包采用 DSH 标准的 `dsh.bundle.patch` 和 `insert` 配置层。源码入口为可直接加载的 JavaScript，不使用安装时构建脚本。安装机制见 [DSH 官方打包与安装文档](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish.html)。
 
 ## 使用
 
