@@ -41,3 +41,14 @@ test('no relationships are invented when the input lacks nodes', () => {
   assert.ok(svg.includes('排列不表示因果关系'));
   assert.ok(!svg.includes('marker-end='));
 });
+
+test('diagram delivery includes a real preview, PNG export and all relations', () => {
+  const files=buildArtifacts(data,{mode:'diagram'});
+  assert.ok(files['index.html'].includes(files['diagram.svg']));
+  assert.ok(files['index.html'].includes('download-diagram'));
+  assert.ok(!files['index.html'].includes('id="export-video"'));
+  assert.ok(files['diagram.svg'].includes('marker-end="url(#arrow)"'));
+  for(const edge of data.edges)assert.ok(files['diagram.svg'].includes(edge.label));
+  assert.ok(files['index.html'].includes('查看依据、术语与适用边界'));
+  assert.ok(!files['video.html']);
+});

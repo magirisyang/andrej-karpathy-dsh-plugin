@@ -21,6 +21,7 @@ function fixture({ sandboxed = false, policy } = {}) {
       writeText: async (...args) => { writes.push(args); stored.set(args[0].displayPath,args[1]); return { version: 'test-version' }; },
     },
     emit() {},
+    on() {},
   };
   return { ctx, writes, get tool() { return tool; }, get section() { return section; } };
 }
@@ -73,4 +74,23 @@ test('revision reuses identical diagram bytes and preserves the old version', as
   const page = f.writes.find(w => w[0].displayPath === second.preferredPath)[1];
   assert.ok(page.includes('../'+directory.split('/').at(-1)+'/diagram.svg'));
   await assert.rejects(() => f.tool.execute({ explanation:data,reuseFrom:'../outside' },exec),/reuseFrom/);
+});
+
+test('OpenDesign prepares self-contained real CLI resources without starting a model', async () => {
+  const f=fixture();apply(f.ctx);
+  const exec={signal:new AbortController().signal,agent:{session:{header:{cwd:'/workspace'}}}};
+  const args={explanation:data,request:'用 OpenDesign 讲解这个项目'};
+  const result=await f.tool.execute(args,exec);
+  assert.deepEqual(validateJsonSchemaValue(f.tool.output.schema,result),[]);
+  assert.equal(result.designBackend,'opendesign');
+  assert.equal(result.mode,'html');
+  assert.ok(result.openDesignCommand.includes('/open-design.mjs'));
+  assert.ok(result.openDesignDesignCommand.endsWith('--design --agent deepseek-harness'));
+  assert.ok(result.files.some(path=>path.endsWith('/opendesign-brief.md')));
+  assert.equal(result.delivery.status,'needs-present');
+  const explicit=await f.tool.execute({...args,mode:'text'},exec);
+  assert.equal(explicit.mode,'text');assert.ok(explicit.preferredPath.endsWith('/explanation.md'));
+  assert.ok(explicit.files.some(path=>path.endsWith('/index.html')));
+  assert.ok(explicit.files.some(path=>path.endsWith('/diagram.svg')));
+  assert.ok(!explicit.files.some(path=>path.endsWith('/video.html')));
 });

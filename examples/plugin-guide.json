@@ -1,0 +1,29 @@
+{
+  "title": "Karpathy 插件怎样帮你理解一个问题",
+  "summary": "DSH 模型负责读资料、组织讲解；Karpathy 插件把讲解做成容易阅读的页面和图解。你可以直接看结果，也可以把页面导入 OpenDesign 继续设计。",
+  "points": [
+    {"title": "从一个问题开始", "detail": "例如，你说“用 Karpathy 解释空间交叉验证”。模型先读到可核对的资料，再把结论、例子和关键步骤交给插件；插件不会自己判断科学结论是否正确。"},
+    {"title": "先看关键关系", "detail": "插件生成图解和阅读页。箭头只表达资料里明确给出的关系；图复杂时，可以一次只看一条关系。你也可以导出保留框、箭头和全部说明的 PNG。"},
+    {"title": "把细节留在后面", "detail": "首次理解先看用途、例子和步骤。文件名、术语、来源与适用条件保留在后续区域，方便需要时核对。折叠细节不会删除原始说明。"},
+    {"title": "需要设计时连接 OpenDesign", "detail": "明确说“用 OpenDesign 改进这个页面”后，插件会准备连接命令。执行命令才能导入页面；另起设计任务后，由 OpenDesign 已配置的代理改进独立副本。导入本身不等于设计完成。"},
+    {"title": "确认成果真实存在", "detail": "只有工具成功后，DSH 才自动交付阅读页面；不支持自动交付的宿主会得到 present 参数。视频、PNG 和 OpenDesign 设计结果都要分别核验，不能把脚本或排队状态当作已完成成果。"}
+  ],
+  "nodes": [
+    {"id":"question","label":"你提出问题"},
+    {"id":"model","label":"模型读资料、组织讲解"},
+    {"id":"page","label":"插件生成阅读页与图解"},
+    {"id":"reader","label":"你看图、阅读和核对"},
+    {"id":"design","label":"可选：OpenDesign 设计副本"},
+    {"id":"result","label":"检查后交付设计成果"}
+  ],
+  "edges": [
+    {"from":"question","to":"model","label":"提出要理解的问题"},
+    {"from":"model","to":"page","label":"提交结构化讲解"},
+    {"from":"page","to":"reader","label":"成功后交付阅读页"},
+    {"from":"page","to":"design","label":"明确要求后执行导入与设计"},
+    {"from":"design","to":"result","label":"检查实际结果，不提前声称完成"}
+  ],
+  "sources":[{"id":"s1","label":"本插件源码与说明","reference":"https://github.com/magirisyang/andrej-karpathy-dsh-plugin"}],
+  "scope":"这是 0.3.0 原生阅读页面的讲解示例，未执行 OpenDesign 视觉重设计。设计任务的实际效果需要启动该应用后检查。",
+  "unknowns":["页面是否触发工具仍取决于当前模型；全局提示不能保证所有模型都遵循。"]
+}

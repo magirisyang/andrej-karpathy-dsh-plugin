@@ -15,6 +15,37 @@ export function pageRuntime(spatialModel, spatialSvg) {
     document.querySelectorAll('details').forEach(item => { item.open = button.dataset.expand === 'true'; });
   }));
   document.getElementById('print')?.addEventListener('click', () => window.print());
+  document.getElementById('relation-filter')?.addEventListener('change', event => {
+    document.querySelectorAll('#main-diagram .relation').forEach(edge => {
+      edge.style.opacity = event.target.value === 'all' || edge.dataset.edge === event.target.value ? '1' : '0.08';
+    });
+  });
+  document.getElementById('download-diagram')?.addEventListener('click', async event => {
+    const button=event.currentTarget,svg=document.querySelector('#main-diagram svg');
+    button.disabled=true;
+    let url;
+    try {
+      const clone=svg.cloneNode(true);
+      // Export all relations even when the reader has filtered the view.
+      clone.querySelectorAll('.relation').forEach(edge=>edge.style.removeProperty('opacity'));
+      const box=svg.viewBox.baseVal;
+      clone.setAttribute('width',box.width);clone.setAttribute('height',box.height);
+      url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml;charset=utf-8'}));
+      const image=new Image();
+      await new Promise((done,fail)=>{image.onload=done;image.onerror=()=>fail(new Error('SVG 加载失败'));image.src=url;});
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.ceil(box.width*2);canvas.height=Math.ceil(box.height*2);
+      const context=canvas.getContext('2d');context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);
+      context.drawImage(image,0,0,canvas.width,canvas.height);
+      const blob=await new Promise(done=>canvas.toBlob(done,'image/png'));
+      if(!blob)throw new Error('PNG 导出失败');
+      const download=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=download;link.download='diagram.png';link.click();
+      setTimeout(()=>URL.revokeObjectURL(download),1000);
+      status.textContent='已导出完整图解；保留实际框、箭头和关系说明。';
+    } catch(error){status.textContent=`未能导出 PNG：${error.message}。请打开原始 SVG，不要只提取文字重画。`;}
+    finally{if(url)URL.revokeObjectURL(url);button.disabled=false;}
+  });
   const simulationRoot = document.getElementById('spatial-plot');
   if (simulationRoot && data.simulation) {
     const grid = document.getElementById('grid-size'), fold = document.getElementById('holdout-fold');
