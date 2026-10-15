@@ -54,6 +54,12 @@ Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在
 
 每个包包含 `knowledge.json`、机械检查 `quality.json`、路径与内容哈希 `manifest.json`。事实说明保存术语、来源、推断/假设、适用范围与模拟参数。模型组织内容，程序校验结构和引用；不自动证明事实正确。中文检查提示长句、部分套话、术语别名及来源缺失，不是国家标准或 ASD-STE100 认证。
 
+### 参考规则与理解阶梯
+
+已参考 [karpathy-output-style](https://github.com/ashryaagr/karpathy-output-style)、[comprehension-ladder](https://github.com/bowen31337/comprehension-ladder) 和 [阮一峰中文文档规范](https://github.com/ruanyf/document-style-guide)，具体对应关系见 [参考规则](docs/references.md)。不是只添加引用：统一说明中保存 `example`、机制 `steps`、`edges.certainty` 和 `edges.factIds`；例子和步骤进入文本、页面与视频。可能、假设或关联待核验事实的关系使用虚线和文字标记。
+
+`writingStrictness` 默认 80，控制中文建议检查的强度，不表示事实准确率或英文标准合规率。工具返回 `rung` 与可选 `nextModes`；是否升级到图、交互或视频由用户决定，不自动启动全部格式。
+
 ### 图解预览与交付
 
 图解模式主文件改为 `index.html`，直接内嵌真实 SVG。关系筛选可以一次只看一条箭头；“导出完整 PNG 图解”用浏览器实际渲染 SVG，保留全部框、箭头和说明，不截断长图。复杂图仍可能有走线交叠，可逐条查看或交给 OpenDesign 重新设计。
@@ -64,7 +70,7 @@ Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在
 
 ### OpenDesign 连接与视觉重设计
 
-先从 [OpenDesign 官方项目](https://github.com/nexu-io/open-design) 安装并启动应用，确保 `od` 可用。若选择 DSH 为设计代理，按官方方式运行 `od agent setup deepseek-harness`；设计任务使用 OpenDesign 已配置的代理和凭证，不保证复用当前 DSH 会话或模型。
+先从 [OpenDesign 官方项目](https://github.com/nexu-io/open-design) 安装并启动应用。Windows 标准安装位置中的官方 CLI 会自动识别；其他位置可指定 `--node-entry <官方 daemon-cli.mjs 路径>`，已有 `od` 也可用 `--od` 指定。若选择 DSH 为设计代理，按官方方式运行 `od agent setup deepseek-harness`；设计任务使用 OpenDesign 已配置的代理和凭证，不保证复用当前 DSH 会话或模型。
 
 在 DSH 里说：
 
@@ -73,8 +79,10 @@ Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在
 模型应传 `designBackend=opendesign`。工具先生成可独立阅读的原生页面、设计约定、任务说明和固定 CLI 连接脚本，返回 `openDesignCommand` 与 `openDesignDesignCommand`，均经 DSH 原有 shell/job 执行。**生成这些文件不代表 OpenDesign 已经运行。**
 
 - 执行 `openDesignCommand`：复制到生成目录中的 `opendesign-work/`，通过官方 `od project import-folder` 导入；收到真实 project.id 才记录成功。原始页面与事实文件保留。
-- 执行 `openDesignDesignCommand`：导入后，用官方 `od run start` 启动 DSH 设计任务；收到 runId 才说“已启动”，随后用 `od run info` 检查。这里可能产生配置代理的模型用量。
+- 执行 `openDesignDesignCommand`：导入后，用官方 `od run start` 启动已配置代理的设计任务；收到 runId 才说“已启动”，随后用 `od run info` 检查。这里可能产生配置代理的模型用量。
 - 在连接命令后加 `--png`：使用 `od export` 实际导出 PNG；已有设计任务必须先返回 succeeded，且成果没有被判为无效。导出后仍须视觉检查。
+
+桌面版可能要求通过应用自身授权选择目录。遇到 `desktop import token rejected` 时，在 OpenDesign 的“打开文件夹”中选择生成包内的 `opendesign-work`；再给连接命令加 `--project <已导入的项目ID>` 继续。不会禁用桌面认证或私自获取令牌。默认使用应用已配置的代理，可用 `openDesignAgent` 或命令的 `--agent` 明确指定；是否支持 DSH 代理取决于 OpenDesign 和 DSH 的实际版本。
 
 可给连接命令加 `--daemon-url http://127.0.0.1:<端口>`、`--od <CLI路径>`。任务说明在 `opendesign-brief.md`，视觉约定在 `design.md`。保存的 `opendesign-state.json` 用于继续已有项目，重复连接不重新导入或覆盖设计副本。导出不覆盖已有 PNG。
 
@@ -84,7 +92,7 @@ Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在
 
 设置 `simulation.kind=spatial_cv` 后，固定种子生成模拟样本。滑块重新计算网格和空间折，再用最近邻分类重算预测正确比例和最近训练点距离。不是仅修改屏幕数字，也没有调用实际随机森林。
 
-支持网格 2—40、2—8 个折、30—300 个样本；样本不足时不显示虚构准确率。目前内置参数模拟仅覆盖空间交叉验证；其他主题的 HTML 是搜索、折叠和阅读页面，不声称具备该主题的计算模型。
+支持网格 2—40、2—8 个折、30—300 个样本；样本不足时不显示虚构准确率。目前内置参数模拟仅覆盖空间交叉验证；其他主题的 HTML 可用 `steps` 提供逐步讲解与节点/箭头高亮，也保留搜索、折叠和阅读功能，不声称具备该主题的计算模型。
 
 ### 多轮复用
 
@@ -119,6 +127,8 @@ python explanations/<编号>/render-video.py --knowledge explanations/<编号>/k
     outputDirectory: explanations
     designBackend: auto
     autoPresent: true
+    writingStrictness: 80
+    openDesignAgent: ""
 ```
 
 目录必须是安全相对路径。输出通过 DSH 文件服务携带会话目录和原沙箱策略，原子 createIfAbsent。网页采用固定模板、转义和 CSP，不执行源材料或模型的 HTML/JavaScript，不加载 CDN。

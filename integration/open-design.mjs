@@ -2,9 +2,27 @@
 // Uses OpenDesign's official CLI so its import grants and authentication remain
 // owned by OpenDesign. Importing is distinct from starting a design model run.
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, stat, mkdir } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { readFile, writeFile, stat, mkdir, realpath } from 'node:fs/promises';
+import { resolve, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+export async function resolveCli(argv, options = {}) {
+  const environment=options.environment??process.env;
+  let entry=options.entry ?? (!options.od ? environment.OD_BIN : undefined);
+  if(!entry && !options.od && (options.platform??process.platform)==='win32') {
+    const local=environment.LOCALAPPDATA ?? join(environment.USERPROFILE??'','AppData','Local');
+    const root=join(local,'Programs','Open Design','resources');
+    try {
+      const config=JSON.parse(await readFile(join(root,'open-design-config.json'),'utf8'));
+      const candidate=resolve(root,config.daemonCliEntryRelative);
+      const location=relative(root,candidate);
+      if(location.startsWith('..')||isAbsolute(location))throw new Error('OpenDesign CLI path escapes its installation');
+      await stat(candidate);entry=candidate;
+    } catch(error) { if(error.code!=='ENOENT')throw error; }
+  }
+  if(entry)return {executable:options.node??environment.OD_NODE_BIN??process.execPath,args:[entry,...argv]};
+  return cliInvocation(argv,options);
+}
 
 export function cliInvocation(argv, { platform = process.platform, od = 'od' } = {}) {
   if (platform !== 'win32') return { executable: od, args: argv };
@@ -14,8 +32,8 @@ export function cliInvocation(argv, { platform = process.platform, od = 'od' } =
   const ps = `$ErrorActionPreference='Stop'; $a=@(ConvertFrom-Json -InputObject '${payload}'); $bin=$a[0]; $rest=@($a | Select-Object -Skip 1); & $bin @rest; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`;
   return { executable: 'powershell.exe', args: ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(ps,'utf16le').toString('base64')] };
 }
-export function runCli(argv, options = {}) {
-  const { executable, args } = cliInvocation(argv, options);
+export async function runCli(argv, options = {}) {
+  const { executable, args } = await resolveCli(argv, options);
   return new Promise((done, fail) => {
     const child = spawn(executable, args, { cwd: options.directory, windowsHide: true, shell: false, detached:process.platform !== 'win32' });
     let stdout = '', stderr = '';
@@ -36,7 +54,7 @@ export function optionsFrom(argv) {
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
     if (key === '--design' || key === '--png') options[key.slice(2)] = true;
-    else if (['--directory','--daemon-url','--od','--agent'].includes(key)) {
+    else if (['--directory','--daemon-url','--od','--agent','--node-entry','--node','--project'].includes(key)) {
       if (!argv[i+1] || argv[i+1].startsWith('--')) throw new Error(`Missing value for ${key}`);
       options[key.slice(2)] = argv[++i];
     } else throw new Error(`Unknown option ${key}`);
@@ -56,7 +74,7 @@ export async function connect(options, cli = runCli) {
   const statePath = join(directory,'opendesign-state.json');
   let state;
   try { state = JSON.parse(await readFile(statePath,'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const invoke = args => cli([...args,...common],{ directory,od:options.od });
+  const invoke = args => cli([...args,...common],{ directory,od:options.od,entry:options['node-entry'],node:options.node });
   const work = join(directory,'opendesign-work');
   // OpenDesign import-folder attaches a live directory, so copy the fixed
   // self-contained files first. Never let a design run edit the hash package.
@@ -69,13 +87,18 @@ export async function connect(options, cli = runCli) {
       try { await writeFile(target,bytes,{flag:'wx'}); }
       catch (error) { if (error.code !== 'EEXIST' || !bytes.equals(await readFile(target))) throw error; }
     }
-    const imported = JSON.parse(await invoke(['project','import-folder',work,'--name',data.title,'--json']));
+    const imported = options.project
+      ? JSON.parse(await invoke(['project','info',options.project,'--json']))
+      : JSON.parse(await invoke(['project','import-folder',work,'--name',data.title,'--json']));
     const id = imported.project?.id;
     if (typeof id !== 'string' || !id.trim()) throw new Error('OpenDesign did not return project.id; import not confirmed');
-    state = { projectId:id,conversationId:imported.conversationId ?? null,connection:options['daemon-url']??'auto',imported:true,designStarted:false };
+    if(options.project && id !== options.project)throw new Error('OpenDesign returned another project; attachment not confirmed');
+    if(options.project && (typeof imported.resolvedDir!=='string' || await realpath(imported.resolvedDir)!==await realpath(work)))throw new Error('Selected OpenDesign project must attach this package opendesign-work directory');
+    state = { projectId:id,conversationId:imported.conversationId ?? null,connection:options['daemon-url']??'auto',imported:true,designStarted:false,importMethod:options.project?'desktop-selected':'cli' };
     await writeFile(statePath,JSON.stringify(state,null,2)+'\n',{flag:'wx'});
   } else {
     if (typeof state.projectId !== 'string' || !state.projectId.trim()) throw new Error('Invalid saved OpenDesign project');
+    if(options.project && options.project!==state.projectId)throw new Error('Saved state belongs to another project');
     if (state.connection !== (options['daemon-url']??'auto')) throw new Error('Saved project belongs to another daemon connection');
     await invoke(['project','info',state.projectId,'--json']);
   }
@@ -106,5 +129,9 @@ export async function connect(options, cli = runCli) {
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { console.log(JSON.stringify(await connect(optionsFrom(process.argv.slice(2))))); }
-  catch (error) { console.error(JSON.stringify({status:'failed',message:error.message})); process.exitCode=1; }
+  catch (error) {
+    const desktopAuth=/desktop import token rejected/i.test(error.message);
+    console.error(JSON.stringify({status:'failed',message:error.message,...(desktopAuth?{next:'In OpenDesign, use Open folder to select opendesign-work. Then rerun with --project <the imported project ID>. CLI imports require the official inherited sidecar connection; do not disable desktop authentication.'}:{})}));
+    process.exitCode=1;
+  }
 }

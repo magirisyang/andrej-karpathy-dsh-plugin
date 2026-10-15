@@ -85,7 +85,7 @@ test('OpenDesign prepares self-contained real CLI resources without starting a m
   assert.equal(result.designBackend,'opendesign');
   assert.equal(result.mode,'html');
   assert.ok(result.openDesignCommand.includes('/open-design.mjs'));
-  assert.ok(result.openDesignDesignCommand.endsWith('--design --agent deepseek-harness'));
+  assert.ok(result.openDesignDesignCommand.endsWith('--design'));
   assert.ok(result.files.some(path=>path.endsWith('/opendesign-brief.md')));
   assert.equal(result.delivery.status,'needs-present');
   const explicit=await f.tool.execute({...args,mode:'text'},exec);

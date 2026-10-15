@@ -38,6 +38,9 @@ def run(argv, cwd=None, timeout=180):
 def scenes_from(data):
     scenes = [{"title": data["title"], "body": data["summary"]}]
     scenes += [{"title": p["title"], "body": p["detail"]} for p in data["points"]]
+    if data.get("example"):
+        scenes.append({"title": "一个具体例子", "body": data["example"]})
+    scenes += [{"title": p["title"], "body": p["detail"]} for p in data.get("steps", [])]
     labels = {"source_stated": "资料所述，未自动核验", "inference": "推断", "assumption": "假设", "unverified": "未核验"}
     scenes += [{"title": labels[f["status"]], "body": f["statement"]} for f in data.get("facts", [])]
     if data.get("scope"):

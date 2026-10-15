@@ -2,6 +2,21 @@
 export function pageRuntime(spatialModel, spatialSvg) {
   const data = JSON.parse(document.getElementById('explanation-data').textContent);
   const status = document.getElementById('status');
+  if(data.steps?.length && document.getElementById('step-caption')) {
+    let current=0;
+    const previous=document.getElementById('step-prev'),next=document.getElementById('step-next');
+    const show=()=>{
+      const step=data.steps[current];
+      document.getElementById('step-caption').textContent=`${current+1}/${data.steps.length} · ${step.title}：${step.detail}`;
+      previous.disabled=current===0;next.disabled=current===data.steps.length-1;
+      document.querySelectorAll('#main-diagram [data-node]').forEach(node=>{node.style.opacity=!step.nodeIds.length||step.nodeIds.includes(node.dataset.node)?'1':'0.15';});
+      document.querySelectorAll('#main-diagram [data-edge]').forEach(edge=>{edge.style.opacity=!step.edgeIndices.length||step.edgeIndices.includes(Number(edge.dataset.edge))?'1':'0.08';});
+    };
+    previous.addEventListener('click',()=>{current=Math.max(0,current-1);show();});
+    next.addEventListener('click',()=>{current=Math.min(data.steps.length-1,current+1);show();});
+    document.getElementById('step-reset').addEventListener('click',()=>{document.querySelectorAll('#main-diagram [data-node],#main-diagram [data-edge]').forEach(item=>item.style.removeProperty('opacity'));document.getElementById('step-caption').textContent='显示全部节点与关系。';});
+    show();
+  }
   document.getElementById('search')?.addEventListener('input', event => {
     const query = event.target.value.trim().toLocaleLowerCase();
     let visible = 0;
@@ -28,6 +43,7 @@ export function pageRuntime(spatialModel, spatialSvg) {
       const clone=svg.cloneNode(true);
       // Export all relations even when the reader has filtered the view.
       clone.querySelectorAll('.relation').forEach(edge=>edge.style.removeProperty('opacity'));
+      clone.querySelectorAll('[data-node]').forEach(node=>node.style.removeProperty('opacity'));
       const box=svg.viewBox.baseVal;
       clone.setAttribute('width',box.width);clone.setAttribute('height',box.height);
       url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml;charset=utf-8'}));
@@ -65,6 +81,8 @@ export function pageRuntime(spatialModel, spatialSvg) {
   const ctx = canvas.getContext('2d');
   // Paginate long text so the exported video retains every character.
   const extra = [
+    ...(data.example ? [{title:'一个具体例子',detail:data.example}] : []),
+    ...(data.steps ?? []),
     ...data.facts.map(f => ({ title: { source_stated: '资料所述', inference: '推断', assumption: '假设', unverified: '未核验' }[f.status], detail: f.statement })),
     ...(data.scope ? [{ title: '适用范围', detail: data.scope }] : []),
     ...data.unknowns.map(detail => ({ title: '待确认', detail })),

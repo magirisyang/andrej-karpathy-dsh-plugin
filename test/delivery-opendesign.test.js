@@ -78,3 +78,16 @@ test('OpenDesign failures leave native page usable and create no success state',
   await assert.rejects(()=>readFile(join(directory,'opendesign-state.json')),/ENOENT/);
   assert.ok((await readFile(join(directory,'index.html'),'utf8')).includes('读懂一个插件'));
 });
+
+test('desktop-selected projects must attach the isolated package folder',async()=>{
+  const directory=await project(),calls=[];
+  const cli=async args=>{calls.push(args);return JSON.stringify({project:{id:'desktop-project'},resolvedDir:join(directory,'opendesign-work')});};
+  const result=await connect({directory,project:'desktop-project'},cli);
+  assert.equal(result.importMethod,'desktop-selected');
+  assert.equal(calls[0][1],'info');
+  assert.equal(result.designStarted,false);
+  await assert.rejects(()=>connect({directory,project:'other'},cli),/another project/);
+  const second=await project();
+  await assert.rejects(()=>connect({directory:second,project:'desktop-project'},async()=>JSON.stringify({project:{id:'desktop-project'},resolvedDir:directory})),/must attach/);
+  await assert.rejects(()=>readFile(join(second,'opendesign-state.json')),/ENOENT/);
+});

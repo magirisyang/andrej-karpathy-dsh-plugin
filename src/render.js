@@ -4,6 +4,7 @@ import { pageRuntime } from './browser.js';
 import { spatialModel, spatialSvg } from './spatial.js';
 import { lintChinese } from './quality.js';
 import { videoAssets } from './video-assets.js';
+import { edgeIsUncertain } from './style.js';
 
 export const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const jsonForHtml = value => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
@@ -31,16 +32,17 @@ export function renderDiagram(data) {
     if(a===b){lx=a.x+cardWidth+24;ly=a.y;path=`M${a.x+cardWidth} ${a.y-20} C${lx+15} ${a.y-65} ${lx+15} ${a.y+65} ${a.x+cardWidth} ${a.y+20}`;}
     else if(a.y===b.y){const above=a.y-cardHeight/2-lane;lx=(a.x+b.x+cardWidth)/2;ly=above-4;path=`M${a.x+cardWidth/2} ${a.y-cardHeight/2} V${above} H${b.x+cardWidth/2} V${b.y-cardHeight/2}`;}
     else {const right=a.x+cardWidth+lane;const target=b.x-lane;const mid=b.y-cardHeight/2-14;lx=right+4;ly=(a.y+mid)/2+(i%5)*16;path=`M${a.x+cardWidth} ${a.y} H${right} V${mid} H${target} V${b.y} H${b.x}`;}
-    return `<g class="relation" data-edge="${i}"><title>${escapeHtml(`${edge.from} → ${edge.to}: ${edge.label}`)}</title><path d="${path}" stroke="#0e766e" fill="none" stroke-width="2" marker-end="url(#arrow)"/><text x="${lx}" y="${ly}" font-size="12" fill="#0e766e">${i+1}</text></g>`;
+    const uncertain=edgeIsUncertain(edge,data.facts);
+    return `<g class="relation" data-edge="${i}"><title>${escapeHtml(`${edge.from} → ${edge.to}: ${edge.label}${uncertain?'（可能或待核验）':''}`)}</title><path d="${path}" stroke="#0e766e" fill="none" stroke-width="2"${uncertain?' stroke-dasharray="7 5"':''} marker-end="url(#arrow)"/><text x="${lx}" y="${ly}" font-size="12" fill="#0e766e">${i+1}${uncertain?'?':''}</text></g>`;
   }).join('');
   const boxes = nodes.map((node, i) => {
     const {x,y}=positions.get(node.id),rows=lines(node.label,14);
-    return `<g><title>${escapeHtml(node.label)}</title><rect x="${x}" y="${y-cardHeight/2}" width="${cardWidth}" height="${cardHeight}" rx="12" fill="#edf9f6" stroke="#92cabc"/><text x="${x+15}" y="${y-(rows.length-1)*8}" font-size="15" fill="#162433">${rows.map((row,j)=>`<tspan x="${x+15}" dy="${j?16:0}">${escapeHtml(row)}</tspan>`).join('')}</text></g>`;
+    return `<g data-node="${escapeHtml(node.id)}"><title>${escapeHtml(node.label)}</title><rect x="${x}" y="${y-cardHeight/2}" width="${cardWidth}" height="${cardHeight}" rx="12" fill="#edf9f6" stroke="#92cabc"/><text x="${x+15}" y="${y-(rows.length-1)*8}" font-size="15" fill="#162433">${rows.map((row,j)=>`<tspan x="${x+15}" dy="${j?16:0}">${escapeHtml(row)}</tspan>`).join('')}</text></g>`;
   }).join('');
   const labels = new Map(nodes.map(node=>[node.id,node.label]));
   let legendY = graphHeight + 20;
   const legend = data.edges.map((edge,i)=>{
-    const rows = lines(`${i+1}. ${labels.get(edge.from)} → ${labels.get(edge.to)}${edge.label ? '：'+edge.label : ''}`,58);
+    const rows = lines(`${i+1}. ${labels.get(edge.from)} → ${labels.get(edge.to)}${edge.label ? '：'+edge.label : ''}${edgeIsUncertain(edge,data.facts)?'（虚线：可能或待核验）':''}`,58);
     const result = rows.map((row,j)=>`<text x="50" y="${legendY+j*20}" font-size="14" fill="#162433">${escapeHtml(row)}</text>`).join('');
     legendY += rows.length*20+16;
     return result;
@@ -61,8 +63,10 @@ function renderPage(data, video = false, links) {
   const runtime = `(${pageRuntime.toString()})(${spatialModel.toString()},${spatialSvg.toString()});`;
   const scriptHash = createHash('sha256').update(runtime).digest('base64');
   const csp = `default-src 'none'; script-src 'sha256-${scriptHash}'; style-src 'unsafe-inline'; img-src data: blob:; media-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'`;
-  const graph = data.simulation ? '' : `<section><h2>看图理解</h2><p>${data.nodes.length ? '箭头表示资料中给出的关系，编号对应下方说明。复杂图可以一次只看一条关系。' : '每个框代表一个要点；排列不表示因果关系。'}</p><nav><button id="download-diagram">导出完整 PNG 图解</button>${data.edges.length?`<label>查看关系 <select id="relation-filter"><option value="all">全部关系</option>${data.edges.map((edge,i)=>`<option value="${i}">${i+1}. ${escapeHtml(edge.label || `${edge.from} → ${edge.to}`)}</option>`).join('')}</select></label>`:''}</nav><div class="diagram" id="main-diagram">${renderDiagram(data)}</div></section>`;
-  const content = video ? `<canvas id="film" width="1280" height="720" aria-label="讲解画面"></canvas><nav class="controls" aria-label="播放控制"><button id="play">播放</button><button id="restart">从头开始</button><input id="position" type="range" min="0" value="0" aria-label="选择场景"><label>每页秒数 <select id="duration"><option value="4">4</option><option value="6" selected>6</option><option value="10">10</option></select></label><button id="export-video">导出 WebM 视频</button><button id="cancel-export" hidden>停止并保存</button></nav><p id="caption" aria-live="polite"></p><p>浏览器导出为无音轨 WebM。中文旁白 MP4 请在 DSH 中执行生成包内的离线渲染脚本。</p>` : `${graph}<h2>关键要点</h2><nav aria-label="阅读控制"><input id="search" type="search" placeholder="搜索要点" aria-label="搜索要点"><button data-expand="true">展开全部</button><button data-expand="false">收起全部</button><button id="print">打印 / 保存 PDF</button></nav><section class="cards">${data.points.map((point, i) => `<details class="point"${i<3?' open':''}><summary>${String(i + 1).padStart(2, '0')} · ${escapeHtml(point.title)}</summary><p>${escapeHtml(point.detail)}</p></details>`).join('')}</section>`;
+  const graph = data.simulation ? '' : `<section><h2>看图理解</h2><p>${data.nodes.length ? '箭头表示资料中给出的关系，编号对应下方说明；虚线和问号表示可能或待核验。复杂图可以一次只看一条关系。' : '每个框代表一个要点；排列不表示因果关系。'}</p><nav><button id="download-diagram">导出完整 PNG 图解</button>${data.edges.length?`<label>查看关系 <select id="relation-filter"><option value="all">全部关系</option>${data.edges.map((edge,i)=>`<option value="${i}">${i+1}. ${escapeHtml(edge.label || `${edge.from} → ${edge.to}`)}</option>`).join('')}</select></label>`:''}</nav><div class="diagram" id="main-diagram">${renderDiagram(data)}</div></section>`;
+  const walkthrough = data.steps.length ? `<section><h2>一步步理解</h2><nav aria-label="步骤控制"><button id="step-prev">上一步</button><button id="step-next">下一步</button><button id="step-reset">显示全图</button></nav><p id="step-caption" aria-live="polite"></p></section>` : '';
+  const example = data.example ? `<section><h2>一个具体例子</h2><p>${escapeHtml(data.example)}</p></section>` : '';
+  const content = video ? `<canvas id="film" width="1280" height="720" aria-label="讲解画面"></canvas><nav class="controls" aria-label="播放控制"><button id="play">播放</button><button id="restart">从头开始</button><input id="position" type="range" min="0" value="0" aria-label="选择场景"><label>每页秒数 <select id="duration"><option value="4">4</option><option value="6" selected>6</option><option value="10">10</option></select></label><button id="export-video">导出 WebM 视频</button><button id="cancel-export" hidden>停止并保存</button></nav><p id="caption" aria-live="polite"></p><p>浏览器导出为无音轨 WebM。中文旁白 MP4 请在 DSH 中执行生成包内的离线渲染脚本。</p>` : `${graph}${walkthrough}${example}<h2>关键要点</h2><nav aria-label="阅读控制"><input id="search" type="search" placeholder="搜索要点" aria-label="搜索要点"><button data-expand="true">展开全部</button><button data-expand="false">收起全部</button><button id="print">打印 / 保存 PDF</button></nav><section class="cards">${data.points.map((point, i) => `<details class="point"${i<3?' open':''}><summary>${String(i + 1).padStart(2, '0')} · ${escapeHtml(point.title)}</summary><p>${escapeHtml(point.detail)}</p></details>`).join('')}</section>`;
   const simulation = !video && data.simulation ? `<section><h2>空间交叉验证模拟</h2><p>使用固定种子的模拟空间样本和最近邻分类器；结果不是实际随机森林或真实树种制图精度。调节参数会重新分配空间折并计算预测。</p><nav><label>网格大小 <input id="grid-size" type="range" min="2" max="40" step="1" value="${data.simulation.gridSize}"><output id="grid-value">${data.simulation.gridSize}</output></label><label>验证折 <select id="holdout-fold">${Array.from({length:data.simulation.folds},(_,i)=>`<option value="${i}"${i===data.simulation.holdoutFold?' selected':''}>${i+1}</option>`).join('')}</select></label></nav><p id="spatial-metrics" role="status"></p><div id="spatial-plot" class="diagram">${spatialSvg(spatialModel(data.simulation))}</div></section>` : '';
   const names = { 'index.html': '阅读与图解', 'video.html': '讲解时间轴', 'explanation.md': '简明文本', 'diagram.svg': 'SVG 原图' };
   const navigation = Object.entries(links).filter(([filename]) => names[filename]).map(([filename,link]) => `<a class="tab" href="${escapeHtml(link)}">${names[filename]}</a>`).join('');
@@ -72,16 +76,16 @@ function renderPage(data, video = false, links) {
 export function renderText(data) {
   const safe = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const labels = { source_stated: '资料所述（未自动核验）', inference: '推断', assumption: '假设', unverified: '未核验' };
-  return `# ${safe(data.title)}\n\n${safe(data.summary)}\n\n${data.points.map((point, i) => `## ${i + 1}. ${safe(point.title)}\n\n${safe(point.detail)}`).join('\n\n')}${data.scope ? '\n\n## 适用范围\n\n' + safe(data.scope) : ''}${data.terms.length ? '\n\n## 术语\n\n' + data.terms.map(t => `- ${safe(t.term)}：${safe(t.definition)}`).join('\n') : ''}${data.facts.length ? '\n\n## 事实、推断与假设\n\n' + data.facts.map(f => `- [${labels[f.status]}] ${safe(f.statement)}`).join('\n') : ''}\n\n## 来源与依据\n\n${data.sources.length ? data.sources.map(s => `- ${safe(s.label)}：${safe(s.reference)}`).join('\n') : '未提供可核对的来源。'}${data.unknowns.length ? '\n\n## 待确认\n\n' + data.unknowns.map(s => `- ${safe(s)}`).join('\n') : ''}\n`;
+  return `# ${safe(data.title)}\n\n${safe(data.summary)}\n\n${data.points.map((point, i) => `## ${i + 1}. ${safe(point.title)}\n\n${safe(point.detail)}`).join('\n\n')}${data.example ? '\n\n## 一个具体例子\n\n'+safe(data.example) : ''}${data.steps.length ? '\n\n## 机制步骤\n\n'+data.steps.map((step,i)=>`${i+1}. ${safe(step.title)}：${safe(step.detail)}`).join('\n') : ''}${data.scope ? '\n\n## 适用范围\n\n' + safe(data.scope) : ''}${data.terms.length ? '\n\n## 术语\n\n' + data.terms.map(t => `- ${safe(t.term)}：${safe(t.definition)}`).join('\n') : ''}${data.facts.length ? '\n\n## 事实、推断与假设\n\n' + data.facts.map(f => `- [${labels[f.status]}] ${safe(f.statement)}`).join('\n') : ''}\n\n## 来源与依据\n\n${data.sources.length ? data.sources.map(s => `- ${safe(s.label)}：${safe(s.reference)}`).join('\n') : '未提供可核对的来源。'}${data.unknowns.length ? '\n\n## 待确认\n\n' + data.unknowns.map(s => `- ${safe(s)}`).join('\n') : ''}\n`;
 }
 
 /** Share the same knowledge while generating only selected formats and previews. */
-export function buildArtifacts(input, { mode = 'all', links: overrides = {} } = {}) {
+export function buildArtifacts(input, { mode = 'all', links: overrides = {}, strictness = 80 } = {}) {
   const data = validateExplanation(input);
   if (!['all','text','diagram','html','video'].includes(mode)) throw new Error('Unsupported output mode');
   const files = {
     'knowledge.json': JSON.stringify(data, null, 2) + '\n',
-    'quality.json': JSON.stringify(lintChinese(data), null, 2) + '\n',
+    'quality.json': JSON.stringify(lintChinese(data,{strictness}), null, 2) + '\n',
     'explanation.md': renderText(data),
   };
   if (mode !== 'text') files['diagram.svg'] = renderDiagram(data);
