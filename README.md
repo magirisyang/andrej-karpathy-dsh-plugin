@@ -1,6 +1,6 @@
 # Andrej Karpathy DSH 插件
 
-**0.3.0 开发预览 · DeepSeek Harness 0.2.0-rc.2**。按任务选择简明中文、SVG、可计算的 HTML 或明确请求的视频，各格式共享一份事实说明。这是独立的 DSH 原生插件，不是官方插件。独立使用时无需 OpenDesign；需要视觉重设计时可连接 OpenDesign 的官方 CLI。
+**0.4.0 开发预览 · DeepSeek Harness 0.2.0-rc.2**。按任务选择简明中文、SVG、可计算的 HTML 或明确请求的视频，各格式共享一份事实说明。这是独立的 DSH 原生插件，不是官方插件。独立使用时无需 OpenDesign；需要视觉重设计时可连接 OpenDesign 的官方 CLI。
 
 ## 安装
 
@@ -30,7 +30,7 @@ dsh plugin --profile desktop add github:magirisyang/andrej-karpathy-dsh-plugin
 & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:magirisyang/andrej-karpathy-dsh-plugin
 ```
 
-Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在来源末尾加 `#v0.3.0`。更新后重启 DSH，以加载新的代码。
+Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在来源末尾加 `#v0.4.0`。更新后重启 DSH，以加载新的代码。
 
 ### 本地开发安装
 
@@ -82,7 +82,9 @@ Web 版把 `--profile desktop` 换成 `--profile web`。需要固定版本时在
 - 执行 `openDesignDesignCommand`：导入后，用官方 `od run start` 启动已配置代理的设计任务；收到 runId 才说“已启动”，随后用 `od run info` 检查。这里可能产生配置代理的模型用量。
 - 在连接命令后加 `--png`：使用 `od export` 实际导出 PNG；已有设计任务必须先返回 succeeded，且成果没有被判为无效。导出后仍须视觉检查。
 
-桌面版可能要求通过应用自身授权选择目录。遇到 `desktop import token rejected` 时，在 OpenDesign 的“打开文件夹”中选择生成包内的 `opendesign-work`；再给连接命令加 `--project <已导入的项目ID>` 继续。不会禁用桌面认证或私自获取令牌。默认使用应用已配置的代理，可用 `openDesignAgent` 或命令的 `--agent` 明确指定；是否支持 DSH 代理取决于 OpenDesign 和 DSH 的实际版本。
+Windows 标准安装的 stable/beta 桌面版会通过 OpenDesign 官方 sidecar 状态接口发现服务地址，再读取官方 `/api/mcp/install-info`，只把 `OD_SIDECAR_CLIENT_ENDPOINT` 和 `OD_DATA_DIR` 传给 CLI。导入授权仍由 OpenDesign 官方 CLI 申请；不会执行接口返回的任意命令，不禁用桌面认证，不记录令牌，也不修改系统 PATH。
+
+其他安装方式可显式指定 `--daemon-url`。若自动连接不可用且提示 `desktop import token rejected`，可在 OpenDesign 的“打开文件夹”中选择生成包内的 `opendesign-work`，再给连接命令加 `--project <已导入的项目ID>` 继续；若应用本身提示 desktop auth handshake failed，先处理 OpenDesign 自身故障，不重复假称导入成功。默认使用应用已配置的代理，可用 `openDesignAgent` 或命令的 `--agent` 明确指定；是否支持 DSH 代理取决于 OpenDesign 和 DSH 的实际版本。
 
 可给连接命令加 `--daemon-url http://127.0.0.1:<端口>`、`--od <CLI路径>`。任务说明在 `opendesign-brief.md`，视觉约定在 `design.md`。保存的 `opendesign-state.json` 用于继续已有项目，重复连接不重新导入或覆盖设计副本。导出不覆盖已有 PNG。
 

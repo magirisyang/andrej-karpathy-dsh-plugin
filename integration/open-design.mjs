@@ -4,7 +4,42 @@
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, stat, mkdir, realpath } from 'node:fs/promises';
 import { resolve, join, relative, isAbsolute } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+function loopbackOrigin(value) {
+  const url=new URL(value);
+  if(url.protocol!=='http:'||!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new Error('daemon-url must be an HTTP loopback origin');
+  return url.origin;
+}
+async function installedDaemon(environment) {
+  if(process.platform!=='win32')return undefined;
+  const local=environment.LOCALAPPDATA??join(environment.USERPROFILE??'','AppData','Local');
+  const root=join(local,'Programs','Open Design','resources');
+  try {
+    const config=JSON.parse(await readFile(join(root,'open-design-config.json'),'utf8'));
+    const channel=/^release-(stable|beta)-win$/.exec(config.namespace)?.[1];
+    if(!channel)return undefined;
+    const {getSidecarStatus}=await import(pathToFileURL(join(root,'app','node_modules','@open-design','sidecar','dist','index.mjs')).href);
+    const status=await getSidecarStatus({channel,namespace:config.namespace,source:'packaged',mode:'runtime',app:'daemon'},{timeoutMs:3000});
+    return status?.url;
+  } catch {return undefined;}
+}
+/** Consume only the official CLI connection environment, never a returned command. */
+export async function resolveConnection(options={}, {environment=process.env,discover=installedDaemon,fetchImpl=fetch}={}) {
+  const discovered=options['daemon-url']??environment.OD_DAEMON_URL??await discover(environment);
+  if(!discovered)return {environment};
+  const daemonUrl=loopbackOrigin(discovered);
+  const response=await fetchImpl(daemonUrl+'/api/mcp/install-info',{redirect:'error',signal:AbortSignal.timeout(15000)});
+  if(response.status===404)return {daemonUrl,environment}; // older official CLI
+  if(!response.ok)throw new Error(`OpenDesign connection metadata: HTTP ${response.status}`);
+  const spec=await response.json();
+  if(loopbackOrigin(spec.daemonUrl)!==daemonUrl)throw new Error('OpenDesign connection metadata belongs to another daemon');
+  const inherited={...environment};
+  for(const key of ['OD_SIDECAR_CLIENT_ENDPOINT','OD_DATA_DIR']) {
+    if(typeof spec.env?.[key]==='string'&&spec.env[key].length>0&&spec.env[key].length<32768)inherited[key]=spec.env[key];
+  }
+  return {daemonUrl,environment:inherited};
+}
 
 export async function resolveCli(argv, options = {}) {
   const environment=options.environment??process.env;
@@ -35,7 +70,7 @@ export function cliInvocation(argv, { platform = process.platform, od = 'od' } =
 export async function runCli(argv, options = {}) {
   const { executable, args } = await resolveCli(argv, options);
   return new Promise((done, fail) => {
-    const child = spawn(executable, args, { cwd: options.directory, windowsHide: true, shell: false, detached:process.platform !== 'win32' });
+    const child = spawn(executable, args, { cwd: options.directory,env:options.environment??process.env, windowsHide: true, shell: false, detached:process.platform !== 'win32' });
     let stdout = '', stderr = '';
     const stop=()=>{
       if(!child.pid)return;
@@ -60,9 +95,7 @@ export function optionsFrom(argv) {
     } else throw new Error(`Unknown option ${key}`);
   }
   if (options['daemon-url']) {
-    const url = new URL(options['daemon-url']);
-    if (url.protocol !== 'http:' || !['localhost','127.0.0.1','[::1]'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
-      throw new Error('daemon-url must be an HTTP loopback origin');
+    loopbackOrigin(options['daemon-url']);
   }
   return options;
 }
@@ -70,11 +103,12 @@ export async function connect(options, cli = runCli) {
   const directory = resolve(options.directory ?? '.');
   await stat(join(directory,'index.html'));
   const data = JSON.parse(await readFile(join(directory,'knowledge.json'),'utf8'));
-  const common = options['daemon-url'] ? ['--daemon-url',options['daemon-url']] : [];
+  const connection=cli===runCli?await resolveConnection(options):{daemonUrl:options['daemon-url']};
+  const common = connection.daemonUrl ? ['--daemon-url',connection.daemonUrl] : [];
   const statePath = join(directory,'opendesign-state.json');
   let state;
   try { state = JSON.parse(await readFile(statePath,'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const invoke = args => cli([...args,...common],{ directory,od:options.od,entry:options['node-entry'],node:options.node });
+  const invoke = args => cli([...args,...common],{ directory,od:options.od,entry:options['node-entry'],node:options.node,environment:connection.environment });
   const work = join(directory,'opendesign-work');
   // OpenDesign import-folder attaches a live directory, so copy the fixed
   // self-contained files first. Never let a design run edit the hash package.
@@ -99,8 +133,14 @@ export async function connect(options, cli = runCli) {
   } else {
     if (typeof state.projectId !== 'string' || !state.projectId.trim()) throw new Error('Invalid saved OpenDesign project');
     if(options.project && options.project!==state.projectId)throw new Error('Saved state belongs to another project');
-    if (state.connection !== (options['daemon-url']??'auto')) throw new Error('Saved project belongs to another daemon connection');
-    await invoke(['project','info',state.projectId,'--json']);
+    const info=JSON.parse(await invoke(['project','info',state.projectId,'--json']));
+    if (state.connection !== (options['daemon-url']??'auto')) {
+      // Desktop restarts allocate a new port. Rebind only after the official
+      // project response confirms this same isolated folder, never by port alone.
+      if(info.project?.id!==state.projectId||typeof info.resolvedDir!=='string'||await realpath(info.resolvedDir)!==await realpath(work))throw new Error('Saved project belongs to another daemon connection');
+      state={...state,connection:options['daemon-url']??'auto'};
+      await writeFile(statePath,JSON.stringify(state,null,2)+'\n');
+    }
   }
   if (options.design && !state.designStarted) {
     const args = ['run','start','--project',state.projectId,'--prompt-file',join(work,'opendesign-brief.md'),'--json'];

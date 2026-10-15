@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { deliveryQueue } from '../src/delivery.js';
 import { designBackend, openDesignArtifacts } from '../src/opendesign.js';
-import { cliInvocation, connect, optionsFrom } from '../integration/open-design.mjs';
+import { cliInvocation, connect, optionsFrom, resolveConnection } from '../integration/open-design.mjs';
 import { buildArtifacts } from '../src/render.js';
 
 test('delivery is published once only after a successful non-cancelled result', () => {
@@ -86,8 +86,29 @@ test('desktop-selected projects must attach the isolated package folder',async()
   assert.equal(result.importMethod,'desktop-selected');
   assert.equal(calls[0][1],'info');
   assert.equal(result.designStarted,false);
+  const restarted=await connect({directory,'daemon-url':'http://127.0.0.1:23456'},cli);
+  assert.equal(restarted.projectId,'desktop-project');
+  assert.equal(restarted.connection,'http://127.0.0.1:23456');
+  await assert.rejects(()=>connect({directory,'daemon-url':'http://127.0.0.1:34567'},async()=>JSON.stringify({project:{id:'desktop-project'},resolvedDir:directory})),/another daemon connection/);
   await assert.rejects(()=>connect({directory,project:'other'},cli),/another project/);
   const second=await project();
   await assert.rejects(()=>connect({directory:second,project:'desktop-project'},async()=>JSON.stringify({project:{id:'desktop-project'},resolvedDir:directory})),/must attach/);
   await assert.rejects(()=>readFile(join(second,'opendesign-state.json')),/ENOENT/);
+});
+
+test('official connection metadata supplies only CLI environment for the same loopback daemon',async()=>{
+  const environment={PATH:'original',OD_BIN:'official-cli.mjs'};
+  const fetchImpl=async(url,options)=>{
+    assert.equal(url,'http://127.0.0.1:12345/api/mcp/install-info');
+    assert.equal(options.redirect,'error');
+    return {ok:true,status:200,json:async()=>({daemonUrl:'http://127.0.0.1:12345',command:'never-execute-this',env:{OD_SIDECAR_CLIENT_ENDPOINT:'official-endpoint',OD_DATA_DIR:'official-data',PATH:'replacement',NODE_OPTIONS:'injected'}})};
+  };
+  const result=await resolveConnection({}, {environment,discover:async()=> 'http://127.0.0.1:12345',fetchImpl});
+  assert.equal(result.daemonUrl,'http://127.0.0.1:12345');
+  assert.deepEqual(result.environment,{...environment,OD_SIDECAR_CLIENT_ENDPOINT:'official-endpoint',OD_DATA_DIR:'official-data'});
+  assert.equal(environment.OD_SIDECAR_CLIENT_ENDPOINT,undefined);
+  await assert.rejects(()=>resolveConnection({'daemon-url':'https://example.com'},{fetchImpl}),/loopback/);
+  await assert.rejects(()=>resolveConnection({'daemon-url':'http://127.0.0.1:12345'},{fetchImpl:async()=>({ok:true,json:async()=>({daemonUrl:'http://127.0.0.1:9999'})})}),/another daemon/);
+  const legacy=await resolveConnection({'daemon-url':'http://127.0.0.1:12345'},{environment,fetchImpl:async()=>({status:404})});
+  assert.equal(legacy.environment,environment);
 });
